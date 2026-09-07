@@ -17,24 +17,11 @@ PREFIX="$STAGE/opt/jellium-desktop"
 rm -rf "$STAGE"
 mkdir -p "$PREFIX" "$PROJECT_ROOT/dist"
 
-# 1. Build + stage binary and CEF payload into /opt/jellium-desktop (no libmpv).
-cargo run --quiet --manifest-path src/xtask/Cargo.toml -- \
-    install --system-mpv --prefix "$PREFIX"
-
-# Optional SwiftShader Vulkan ICD (best effort; not copied by xtask install).
-for icd in "$PROJECT_ROOT"/.cache/cef/*/vk_swiftshader_icd.json; do
-    [ -f "$icd" ] && cp "$icd" "$PREFIX/" || true
-    break
-done
-
-# Reduce size (release CEF libs are usually pre-stripped; ignore failures).
-strip "$PREFIX/jellium-desktop" 2>/dev/null || true
-find "$PREFIX" -name '*.so' -exec strip {} + 2>/dev/null || true
-
-# 2. Ensure CEF's runtime-lib providers are installed so dpkg-shlibdeps can
-#    map libcef.so's DT_NEEDED sonames to packages. Try the base name, then
-#    the t64 variant (Ubuntu 24.04+/Debian 13 time_t transition). A soname
-#    with no provider is simply skipped by --ignore-missing-info below.
+# 1. Install CEF's runtime-lib providers FIRST. libcef.so's indirect deps
+#    (nss/nspr/atk/cups/atspi/Xcomposite/Xdamage/...) must be resolvable BOTH
+#    when cargo links the binary against libcef AND later for dpkg-shlibdeps.
+#    Try the base name, then the t64 variant (Ubuntu 24.04+/Debian 13 time_t
+#    transition). A soname with no provider is skipped by --ignore-missing-info.
 CEF_LIBS="libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 \
 libgbm1 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libxkbcommon0 \
 libasound2 libpango-1.0-0 libpangocairo-1.0-0 libcairo2 libatspi2.0-0 \
@@ -47,6 +34,20 @@ if command -v apt-get >/dev/null 2>&1; then
           || echo "warn: no provider for $p / ${p}t64" >&2
     done
 fi
+
+# 2. Build + stage binary and CEF payload into /opt/jellium-desktop (no libmpv).
+cargo run --quiet --manifest-path src/xtask/Cargo.toml -- \
+    install --system-mpv --prefix "$PREFIX"
+
+# Optional SwiftShader Vulkan ICD (best effort; not copied by xtask install).
+for icd in "$PROJECT_ROOT"/.cache/cef/*/vk_swiftshader_icd.json; do
+    [ -f "$icd" ] && cp "$icd" "$PREFIX/" || true
+    break
+done
+
+# Reduce size (release CEF libs are usually pre-stripped; ignore failures).
+strip "$PREFIX/jellium-desktop" 2>/dev/null || true
+find "$PREFIX" -name '*.so' -exec strip {} + 2>/dev/null || true
 
 # 3. Compute Depends via dpkg-shlibdeps. -l marks our private lib dir so
 #    bundled CEF sonames resolve locally (not as external deps); analysing
