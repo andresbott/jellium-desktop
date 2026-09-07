@@ -49,3 +49,6 @@ mod appimage 'appimage/appimage.just'
 
 [group('package')]
 mod flatpak 'flatpak/flatpak.just'
+
+[group('package')]
+mod deb 'deb/deb.just'
