@@ -2,12 +2,21 @@ name: build-linux-deb
 
 on:
   workflow_dispatch:
+    inputs:
+      version:
+        description: "Override version string (e.g. 1.2.0); sets JFN_VERSION"
+        required: false
+        type: string
   pull_request:
   push:
     branches:
       - main
-    tags:
-      - 'v*'
+  workflow_call:
+    inputs:
+      version:
+        description: "Version string to embed (sets JFN_VERSION)"
+        required: false
+        type: string
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -29,6 +38,8 @@ jobs:
           - { distro: 'ubuntu:26.04', codename: resolute, deb_arch: arm64, runner: ubuntu-24.04-arm }
     runs-on: ${{ matrix.runner }}
     container: ${{ matrix.distro }}
+    env:
+      JFN_VERSION: ${{ inputs.version }}
 
     steps:
       - name: Install base tooling

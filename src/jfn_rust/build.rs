@@ -62,9 +62,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         let template = std::fs::read_to_string(&rc_template)?;
 
-        // `env!` (not std::env::var) so rustc re-runs this script on a bump.
+        // VERSION source: JFN_VERSION overrides when set (CI injects it from
+        // the release tag), else the compiled-in workspace version. `env!`
+        // records the Cargo.toml dep for bare builds; rerun-if-env-changed
+        // covers the override.
         println!("cargo:rerun-if-changed=../Cargo.toml");
-        let version = env!("CARGO_PKG_VERSION").to_string();
+        println!("cargo:rerun-if-env-changed=JFN_VERSION");
+        let version = match std::env::var("JFN_VERSION") {
+            Ok(v) if !v.is_empty() => v,
+            _ => env!("CARGO_PKG_VERSION").to_string(),
+        };
         let numeric: Vec<&str> = version.split('-').next().unwrap_or("").split('.').collect();
         let mut major: u32 = numeric.first().and_then(|s| s.parse().ok()).unwrap_or(0);
         let mut minor: u32 = numeric.get(1).and_then(|s| s.parse().ok()).unwrap_or(0);

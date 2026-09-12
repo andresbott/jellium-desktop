@@ -21,7 +21,12 @@ pub fn git_info() -> (Option<String>, bool) {
 }
 
 pub fn read() -> Result<Version> {
-    let raw = env!("CARGO_PKG_VERSION").to_string();
+    // JFN_VERSION overrides when set (CI injects it from the release tag),
+    // else the compiled-in workspace version.
+    let raw = match std::env::var("JFN_VERSION") {
+        Ok(v) if !v.is_empty() => v,
+        _ => env!("CARGO_PKG_VERSION").to_string(),
+    };
     let full = match (raw.contains('-'), git_info()) {
         (true, (Some(hash), dirty)) => {
             let suffix = if dirty { "-dirty" } else { "" };
