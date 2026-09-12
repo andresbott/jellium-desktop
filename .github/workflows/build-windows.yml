@@ -2,12 +2,21 @@ name: build-windows
 
 on:
   workflow_dispatch:
+    inputs:
+      version:
+        description: "Override version string (e.g. 1.2.0); sets JFN_VERSION"
+        required: false
+        type: string
   pull_request:
   push:
     branches:
       - main
-    tags:
-      - 'v*'
+  workflow_call:
+    inputs:
+      version:
+        description: "Version string to embed (sets JFN_VERSION)"
+        required: false
+        type: string
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -32,6 +41,8 @@ jobs:
             pkg_prefix: mingw-w64-clang-aarch64
             triple: aarch64-pc-windows-msvc
     runs-on: ${{ matrix.runner }}
+    env:
+      JFN_VERSION: ${{ inputs.version }}
 
     steps:
       - name: Checkout

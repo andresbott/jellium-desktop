@@ -1,0 +1,92 @@
+name: build-linux-deb
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Override version string (e.g. 1.2.0); sets JFN_VERSION"
+        required: false
+        type: string
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_call:
+    inputs:
+      version:
+        description: "Version string to embed (sets JFN_VERSION)"
+        required: false
+        type: string
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { distro: 'debian:12',   codename: bookworm,  deb_arch: amd64, runner: ubuntu-24.04 }
+          - { distro: 'debian:12',   codename: bookworm,  deb_arch: arm64, runner: ubuntu-24.04-arm }
+          - { distro: 'debian:13',   codename: trixie,    deb_arch: amd64, runner: ubuntu-24.04 }
+          - { distro: 'debian:13',   codename: trixie,    deb_arch: arm64, runner: ubuntu-24.04-arm }
+          - { distro: 'ubuntu:24.04', codename: noble,    deb_arch: amd64, runner: ubuntu-24.04 }
+          - { distro: 'ubuntu:24.04', codename: noble,    deb_arch: arm64, runner: ubuntu-24.04-arm }
+          - { distro: 'ubuntu:26.04', codename: resolute, deb_arch: amd64, runner: ubuntu-24.04 }
+          - { distro: 'ubuntu:26.04', codename: resolute, deb_arch: arm64, runner: ubuntu-24.04-arm }
+    runs-on: ${{ matrix.runner }}
+    container: ${{ matrix.distro }}
+    env:
+      JFN_VERSION: ${{ inputs.version }}
+
+    steps:
+      - name: Install base tooling
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            ca-certificates curl git jq build-essential pkg-config \
+            clang libclang-dev \
+            libmpv-dev libavcodec-dev \
+            dpkg-dev gettext-base \
+            libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libx11-dev libxcb1-dev
+
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install Rust toolchain
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+            | sh -s -- -y --profile minimal --default-toolchain stable
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+
+      - name: Install nfpm
+        run: |
+          ver=2.43.0
+          arch="$(dpkg --print-architecture)"
+          curl -sSL "https://github.com/goreleaser/nfpm/releases/download/v${ver}/nfpm_${ver}_${arch}.deb" -o /tmp/nfpm.deb
+          apt-get install -y /tmp/nfpm.deb
+
+      - uses: ./.github/actions/setup-cef
+        with:
+          platform: ${{ github.workflow }}-${{ matrix.codename }}-${{ matrix.deb_arch }}
+
+      - name: Build .deb
+        run: ./dev/linux/deb/build.sh
+        env:
+          DEB_ARCH: ${{ matrix.deb_arch }}
+
+      - name: Verify install + link resolution
+        run: |
+          apt-get install -y ./dist/*.deb
+          ldd /opt/jellium-desktop/jellium-desktop
+          if ldd /opt/jellium-desktop/jellium-desktop | grep -q 'not found'; then
+            echo "unresolved libraries"; exit 1
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: linux-deb-${{ matrix.codename }}-${{ matrix.deb_arch }}
+          path: dist/*.deb

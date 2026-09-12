@@ -2,12 +2,21 @@ name: build-linux-flatpak
 
 on:
   workflow_dispatch:
+    inputs:
+      version:
+        description: "Override version string (e.g. 1.2.0); sets JFN_VERSION"
+        required: false
+        type: string
   pull_request:
   push:
     branches:
       - main
-    tags:
-      - 'v*'
+  workflow_call:
+    inputs:
+      version:
+        description: "Version string to embed (sets JFN_VERSION)"
+        required: false
+        type: string
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -16,6 +25,8 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      JFN_VERSION: ${{ inputs.version }}
 
     steps:
       - name: Checkout

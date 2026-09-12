@@ -1,0 +1,102 @@
+name: release
+
+# Cut a release with `make tag version=v1.2.3`: that pushes the tag, this
+# workflow builds every platform artifact (reusing the per-platform build
+# workflows) and attaches them to a single GitHub release.
+#
+# The tag drives the version: it is injected as JFN_VERSION into each build
+# (honored by the build.rs scripts and `xtask version`), so the artifact
+# filenames and the version embedded in the binaries both match the tag.
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+      - 'v*.*.*-*'
+
+permissions:
+  contents: write
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      # tag "v1.2.0" -> JFN_VERSION "1.2.0"
+      - id: v
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+  linux-deb:
+    needs: version
+    uses: ./.github/workflows/build-linux-deb.yml
+    with:
+      version: ${{ needs.version.outputs.version }}
+
+  linux-appimage:
+    needs: version
+    uses: ./.github/workflows/build-linux-appimage.yml
+    with:
+      version: ${{ needs.version.outputs.version }}
+
+  linux-flatpak:
+    needs: version
+    uses: ./.github/workflows/build-linux-flatpak.yml
+    with:
+      version: ${{ needs.version.outputs.version }}
+
+  macos:
+    needs: version
+    uses: ./.github/workflows/build-macos.yml
+    with:
+      version: ${{ needs.version.outputs.version }}
+
+  windows:
+    needs: version
+    uses: ./.github/workflows/build-windows.yml
+    with:
+      version: ${{ needs.version.outputs.version }}
+
+  release:
+    needs: [linux-deb, linux-appimage, linux-flatpak, macos, windows]
+    runs-on: ubuntu-latest
+    steps:
+      # No merge-multiple: land each artifact in its own subdir so the 8
+      # per-distro .deb files (same basename per arch) stay separable.
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v7
+        with:
+          path: artifacts
+
+      - name: Stage release assets
+        run: |
+          set -eu
+          mkdir -p assets
+          # The .deb files share one basename per arch
+          # (jellium-desktop_<ver>_<arch>.deb) but their Depends differ per
+          # distro, so keep all of them: fold the codename (from the artifact
+          # dir name linux-deb-<codename>-<arch>) into the filename.
+          for d in artifacts/linux-deb-*/; do
+            codename="$(basename "$d" | cut -d- -f3)"
+            for deb in "$d"*.deb; do
+              base="$(basename "$deb" .deb)"   # jellium-desktop_<ver>_<arch>
+              arch="${base##*_}"
+              stem="${base%_*}"
+              cp "$deb" "assets/${stem}_${codename}_${arch}.deb"
+            done
+          done
+          # AppImage / flatpak / dmg / zip already carry arch-unique names.
+          find artifacts \
+            \( -name '*.AppImage' -o -name '*.flatpak' \
+               -o -name '*.dmg' -o -name '*.zip' \) \
+            -exec cp {} assets/ \;
+          echo "Release assets:"
+          ls -1 assets
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: assets/*
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          prerelease: ${{ contains(github.ref_name, '-') }}
