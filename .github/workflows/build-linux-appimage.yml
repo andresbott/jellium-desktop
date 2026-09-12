@@ -19,7 +19,7 @@ on:
         type: string
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: build-linux-appimage-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
