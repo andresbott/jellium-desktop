@@ -34,9 +34,17 @@ clean:
     if (Test-Path dist) { Remove-Item -Recurse -Force dist }
     cargo clean --manifest-path src/Cargo.toml
 
+# Run tests (links + loads the in-tree libmpv that `build` leaves in build/mpv-build)
+[group('test')]
+[linux]
+test: build
+    JFN_MPV_LIB_DIR='{{ justfile_directory() }}/build/mpv-build' \
+    LD_LIBRARY_PATH='{{ justfile_directory() }}/build/mpv-build'"${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" \
+    cargo test --manifest-path src/Cargo.toml --workspace
+
 # Run tests
 [group('test')]
-[unix]
+[macos]
 test: build
     cargo test --manifest-path src/Cargo.toml --workspace
 

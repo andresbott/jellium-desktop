@@ -32,7 +32,10 @@ pub fn install(build_dir: &Path, prefix: &Path, args: &BuildArgs) -> Result<Path
         xfs::copy_dir_recursive(&cef.dir.join("locales"), &prefix.join("locales"))?;
     }
 
-    if let Some(dir) = &args.external_mpv {
+    if args.system_mpv {
+        // System libmpv is resolved by the dynamic loader at runtime;
+        // nothing to stage into the package prefix.
+    } else if let Some(dir) = &args.external_mpv {
         xfs::copy_file(
             &dir.join("lib").join("libmpv.so"),
             &prefix.join("libmpv.so"),

@@ -50,6 +50,11 @@ pub struct BuildArgs {
     /// Use the named external libmpv directory (must contain include/ and lib/).
     #[arg(long, env = "EXTERNAL_MPV_DIR")]
     pub external_mpv: Option<PathBuf>,
+    /// Link the system libmpv via pkg-config instead of building or
+    /// bundling one (Linux .deb builds). Mutually exclusive with
+    /// --external-mpv.
+    #[arg(long, conflicts_with = "external_mpv")]
+    pub system_mpv: bool,
     /// Also build the standalone mpv CLI binary from the submodule.
     #[arg(long)]
     pub mpv_cli: bool,
@@ -95,5 +100,40 @@ fn main() -> Result<()> {
             println!("{}", version::read()?.full);
             Ok(())
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn system_mpv_flag_parses() {
+        let result = Cli::try_parse_from(["xtask", "build", "--system-mpv"]);
+        assert!(matches!(
+            result,
+            Ok(Cli { cmd: Cmd::Build(ref a) }) if a.system_mpv
+        ));
+    }
+
+    #[test]
+    fn system_mpv_conflicts_with_external_mpv() {
+        let result = Cli::try_parse_from([
+            "xtask",
+            "build",
+            "--system-mpv",
+            "--external-mpv",
+            "/tmp/mpv",
+        ]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn system_mpv_defaults_false() {
+        let result = Cli::try_parse_from(["xtask", "build"]);
+        assert!(matches!(
+            result,
+            Ok(Cli { cmd: Cmd::Build(ref a) }) if !a.system_mpv
+        ));
     }
 }

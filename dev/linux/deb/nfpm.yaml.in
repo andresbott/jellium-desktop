@@ -1,0 +1,24 @@
+name: jellium-desktop
+arch: ${DEB_ARCH}
+version: ${VERSION}
+version_schema: none
+section: video
+priority: optional
+maintainer: "Jellium Contributors <net.nullsum@users.noreply.github.com>"
+homepage: https://github.com/andrewrabert/jellium-desktop
+description: Desktop client for Jellyfin, built on CEF with mpv playback.
+license: GPL-2.0-or-later
+depends: ${DEPENDS}
+contents:
+  # Binary + CEF payload (recursive; includes locales/).
+  - src: build/deb/staging/opt/jellium-desktop/**
+    dst: /opt/jellium-desktop
+  - src: resources/linux/net.nullsum.JelliumDesktop.desktop
+    dst: /usr/share/applications/net.nullsum.JelliumDesktop.desktop
+  - src: resources/linux/net.nullsum.JelliumDesktop.svg
+    dst: /usr/share/icons/hicolor/scalable/apps/net.nullsum.JelliumDesktop.svg
+  - src: resources/linux/net.nullsum.JelliumDesktop.metainfo.xml
+    dst: /usr/share/metainfo/net.nullsum.JelliumDesktop.metainfo.xml
+  - src: /opt/jellium-desktop/jellium-desktop
+    dst: /usr/bin/jellium-desktop
+    type: symlink

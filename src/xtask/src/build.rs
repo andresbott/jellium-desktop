@@ -14,9 +14,12 @@ pub fn run(args: &BuildArgs) -> Result<()> {
 
     let (mpv_info, used_external_mpv) = if let Some(dir) = &args.external_mpv {
         println!("Using external mpv from: {}", dir.display());
-        (mpv::external(dir)?, true)
+        (Some(mpv::external(dir)?), true)
+    } else if args.system_mpv {
+        println!("Using system libmpv (pkg-config)");
+        (None, false)
     } else {
-        (mpv::build(&out, args.mpv_cli)?, false)
+        (Some(mpv::build(&out, args.mpv_cli)?), false)
     };
 
     // Cargo invocation — mirror the env CMake passes today.
@@ -53,17 +56,28 @@ pub fn run(args: &BuildArgs) -> Result<()> {
     cmd.env("JFN_GIT_HASH", git_hash.unwrap_or_default());
     cmd.env("JFN_GIT_DIRTY", if git_dirty { "1" } else { "0" });
 
-    if let Some(dir) = &args.external_mpv {
-        cmd.env("EXTERNAL_MPV_DIR", dir);
-        cmd.env_remove("JFN_MPV_INCLUDE_DIR");
-        cmd.env_remove("JFN_MPV_LIB_DIR");
-    } else {
-        cmd.env_remove("EXTERNAL_MPV_DIR");
-        cmd.env(
-            "JFN_MPV_INCLUDE_DIR",
-            paths::mpv_source_dir().join("include"),
-        );
-        cmd.env("JFN_MPV_LIB_DIR", &mpv_info.build_dir);
+    match (&args.external_mpv, args.system_mpv) {
+        (Some(dir), _) => {
+            cmd.env("EXTERNAL_MPV_DIR", dir);
+            cmd.env_remove("JFN_MPV_INCLUDE_DIR");
+            cmd.env_remove("JFN_MPV_LIB_DIR");
+        }
+        (None, true) => {
+            // Fall through to src/mpv/build.rs's pkg-config path.
+            cmd.env_remove("EXTERNAL_MPV_DIR");
+            cmd.env_remove("JFN_MPV_INCLUDE_DIR");
+            cmd.env_remove("JFN_MPV_LIB_DIR");
+        }
+        (None, false) => {
+            cmd.env_remove("EXTERNAL_MPV_DIR");
+            cmd.env(
+                "JFN_MPV_INCLUDE_DIR",
+                paths::mpv_source_dir().join("include"),
+            );
+            if let Some(m) = &mpv_info {
+                cmd.env("JFN_MPV_LIB_DIR", &m.build_dir);
+            }
+        }
     }
 
     // Linux: rpath system / out-of-tree lib dirs into the binary so it
@@ -101,6 +115,8 @@ pub fn run(args: &BuildArgs) -> Result<()> {
     xfs::copy_file(&bin_src, &bin_dst)?;
 
     crate::platform::stage_cef(&out, &cef_info)?;
-    crate::platform::stage_mpv(&out, &mpv_info, used_external_mpv, &bin_dst)?;
+    if let Some(m) = &mpv_info {
+        crate::platform::stage_mpv(&out, m, used_external_mpv, &bin_dst)?;
+    }
     Ok(())
 }

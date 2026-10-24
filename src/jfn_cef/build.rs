@@ -7,10 +7,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .and_then(std::path::Path::parent)
         .ok_or("CARGO_MANIFEST_DIR has no grandparent")?;
 
-    // `env!` (not std::env::var) so rustc records the dep and re-runs this
-    // script when the workspace version bumps.
+    // VERSION source: JFN_VERSION overrides when set (CI injects it from the
+    // release tag), else the compiled-in workspace version. `env!` records the
+    // Cargo.toml dep so a bare build re-runs on a version bump;
+    // rerun-if-env-changed covers the override.
     println!("cargo:rerun-if-changed=../Cargo.toml");
-    let version = env!("CARGO_PKG_VERSION");
+    println!("cargo:rerun-if-env-changed=JFN_VERSION");
+    let version = match std::env::var("JFN_VERSION") {
+        Ok(v) if !v.is_empty() => v,
+        _ => env!("CARGO_PKG_VERSION").to_string(),
+    };
     println!("cargo:rustc-env=JFN_APP_VERSION={version}");
 
     // VERSION_FULL = "<VERSION>+<git short hash>[-dirty]", but only for
